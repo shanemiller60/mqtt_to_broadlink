@@ -18,6 +18,7 @@ class Client:
         self.devices = {}
 
         for device_name in self.config.get_device_names():
+            print(f'Found device \'{device_name}\'')
             self.get_device(device_name)
 
     def get_device(self, device_name: str) -> Optional[Device]:
