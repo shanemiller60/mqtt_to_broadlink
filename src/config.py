@@ -4,8 +4,10 @@ from typing import List, Tuple, Optional
 
 class Config:
     config: configparser.ConfigParser
+    config_file: str
 
     def __init__(self, config_file: str):
+        self.config_file = config_file
         self.config = configparser.ConfigParser()
         self.config.read(config_file)
 
@@ -29,3 +31,8 @@ class Config:
 
     def get_command(self, command: str) -> Optional[str]:
         return self.config['commands'].get(command)
+
+    def save_command(self, command: str, hex_code: str) -> None:
+        self.config['commands'][command] = hex_code
+        with open(self.config_file, 'w') as configfile:
+            self.config.write(configfile)
