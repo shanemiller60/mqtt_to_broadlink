@@ -17,8 +17,7 @@ class Client:
         self.mqtt.on_message = self.on_message
         self.devices = {}
 
-        for device_name in self.config.get_device_names():
-            print(f'Found device \'{device_name}\'')
+        for device_name in self.config.device_names():
             self.get_device(device_name)
 
     def get_device(self, device_name: str) -> Optional[Device]:
