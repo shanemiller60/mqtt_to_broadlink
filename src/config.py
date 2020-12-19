@@ -24,16 +24,12 @@ class Config:
         del self.config['devices'][device_name]
         self._save_config()
 
-    def device_details(self, device_name: str) -> Tuple[int, str, str]:
-        """
-        device_name **must** exist in the [devices] section
-
-        :param device_name:
-        :return:
-        """
+    def device_details(self, device_name: str) -> Optional[Tuple[int, str, str]]:
         device_settings = self.config['devices'].get(device_name)
-        split = device_settings.split(' ')
-        return int(split[0], 16), split[1], split[2]
+        if device_settings is not None:
+            split = device_settings.split(' ')
+            return int(split[0], 16), split[1], split[2]
+        return None
 
     def mqtt_details(self) -> configparser.SectionProxy:
         return self.config['mqtt']
