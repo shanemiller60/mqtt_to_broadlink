@@ -1,9 +1,9 @@
-from typing import Optional, Dict
 import re
-
 import broadlink
 import paho.mqtt.client as mqtt
+from typing import Optional, Dict
 from src.config import Config
+from src.converter import Converter
 from src.device import Device
 
 
@@ -33,16 +33,19 @@ class Client:
         | `m2b/device/<device-name>/add` | `<device-type> <device-ip> <device-mac>` | Adds a device to the config from a known device string |
         | `m2b/device/<device-name>/remove` | - | Removes the device from the config |
         | `m2b/command/<command-name>/add` | `<command-code>` | Adds a command code to the config |
+        | `m2b/command/<command-name>/add_pronto` | `<command-code>` | Adds a pronto-hex code to the config |
+        | `m2b/command/<command-name>/add_nec` (NYI) | `<command-code>` | Adds a NEC IR code to the config |
         | `m2b/command/<command-name>/remove` | - | Removes a command code from the config |
         """
         self.message_map = {
-            self.handle_command_send:    f'{self.mqtt_prefix}device/(.*)/send',
-            self.handle_command_learn:   f'{self.mqtt_prefix}device/(.*)/learn',
-            self.handle_device_add:      f'{self.mqtt_prefix}device/(.*)/add',
-            self.handle_device_remove:   f'{self.mqtt_prefix}device/(.*)/remove',
-            self.handle_command_add:     f'{self.mqtt_prefix}command/(.*)/add',
-            self.handle_command_remove:  f'{self.mqtt_prefix}command/(.*)/remove',
-            self.handle_device_discover: f'{self.mqtt_prefix}device/(.*)/discover',
+            self.handle_device_send:        f'{self.mqtt_prefix}device/(.*)/send',
+            self.handle_device_learn:       f'{self.mqtt_prefix}device/(.*)/learn',
+            self.handle_device_add:         f'{self.mqtt_prefix}device/(.*)/add',
+            self.handle_device_remove:      f'{self.mqtt_prefix}device/(.*)/remove',
+            self.handle_device_discover:    f'{self.mqtt_prefix}device/(.*)/discover',
+            self.handle_command_add_pronto: f'{self.mqtt_prefix}command/(.*)/add_pronto',
+            self.handle_command_add:        f'{self.mqtt_prefix}command/(.*)/add',
+            self.handle_command_remove:     f'{self.mqtt_prefix}command/(.*)/remove',
         }
 
     def device_get(self, device_name: str) -> Optional[Device]:
@@ -106,14 +109,18 @@ class Client:
                 return
         print(f'No handler for message topic \'{msg.topic}\'')
 
-    def handle_command_send(self, msg):
+    """
+    topic: m2b/device/<device-name>/send
+    payload: command-name
+    """
+    def handle_device_send(self, msg):
         command_name = str(msg.payload, 'UTF-8')
         hex_code = self.config.command_get(command_name)
         if hex_code is None:
             print(f'Received request for unknown command \'{command_name}\'')
             return
         try:
-            m = re.search(self.message_map[self.handle_command_send], msg.topic)
+            m = re.search(self.message_map[self.handle_device_send], msg.topic)
             device_name = m.group(1) or ''
             device = self.device_get(device_name)
             if device is not None:
@@ -123,10 +130,14 @@ class Client:
         except:
             print(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{command_name}\'')
 
-    def handle_command_learn(self, msg):
+    """
+    topic: m2b/device/<device-name>/learn
+    payload: -
+    """
+    def handle_device_learn(self, msg):
         command_name = str(msg.payload, 'UTF-8')
         try:
-            m = re.search(self.message_map[self.handle_command_learn], msg.topic)
+            m = re.search(self.message_map[self.handle_device_learn], msg.topic)
             device_name = m.group(1) or ''
             device = self.device_get(device_name)
             if device is not None:
@@ -140,36 +151,6 @@ class Client:
                 print(f'Could not open/connect to device \'{device_name}\'')
         except:
             print(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{command_name}\'')
-
-    """
-    topic: m2b/command/<command-name>/add
-    payload: command-code 
-    """
-    def handle_command_add(self, msg):
-        payload = "invalid"
-        try:
-            payload = str(msg.payload, 'UTF-8')
-            m = re.search(self.message_map[self.handle_command_add], msg.topic)
-            command_name = m.group(1)
-
-            if payload is not None and command_name is not None:
-                self.config.command_add(command_name, payload)
-        except:
-            print(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{payload}\'')
-
-    """
-    topic: m2b/command/<command-name>/remove
-    payload: -
-    """
-    def handle_command_remove(self, msg):
-        try:
-            m = re.search(self.message_map[self.handle_command_remove], msg.topic)
-            command_name = m.group(1)
-
-            if command_name is not None:
-                self.config.command_remove(command_name)
-        except:
-            print(f'Error while processing MQTT message, topic=\'{msg.topic}\'')
 
     """
     topic: m2b/device/<device-name>/discover
@@ -217,5 +198,52 @@ class Client:
             m = re.search(self.message_map[self.handle_device_remove], msg.topic)
             device_name = m.group(1)
             self.device_remove(device_name)
+        except:
+            print(f'Error while processing MQTT message, topic=\'{msg.topic}\'')
+
+    """
+    topic: m2b/command/<command-name>/add
+    payload: command-code
+    """
+    def handle_command_add(self, msg):
+        payload = "invalid"
+        try:
+            payload = str(msg.payload, 'UTF-8')
+            m = re.search(self.message_map[self.handle_command_add], msg.topic)
+            command_name = m.group(1)
+
+            if payload is not None and command_name is not None:
+                self.config.command_add(command_name, payload)
+        except:
+            print(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{payload}\'')
+
+    """
+    topic: m2b/command/<command-name>/add_pronto
+    payload: command-code
+    """
+    def handle_command_add_pronto(self, msg):
+        payload = "invalid"
+        try:
+            payload = str(msg.payload, 'UTF-8')
+            pronto_code = Converter.pronto_to_broadlink(payload)
+            m = re.search(self.message_map[self.handle_command_add_pronto], msg.topic)
+            command_name = m.group(1)
+
+            if payload is not None and command_name is not None:
+                self.config.command_add(command_name, pronto_code)
+        except:
+            print(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{payload}\'')
+
+    """
+    topic: m2b/command/<command-name>/remove
+    payload: -
+    """
+    def handle_command_remove(self, msg):
+        try:
+            m = re.search(self.message_map[self.handle_command_remove], msg.topic)
+            command_name = m.group(1)
+
+            if command_name is not None:
+                self.config.command_remove(command_name)
         except:
             print(f'Error while processing MQTT message, topic=\'{msg.topic}\'')
