@@ -32,16 +32,25 @@ details (\<device-type\> \<device-ip\> \<device-mac\>) match the output from the
 
 The program listens on the following topics:
 
-* <device_name>/command/send
-* <device_name>/command/learn
+| Topic | Payload | Description |
+| --- | --- | --- |
+| `m2b/<device-name>/command/send` | `<command-name>` | Sends a command through the device |
+| `m2b/<device-name>/command/learn` | `<command-name>` | Learns a command through the device and saves the code to the config |
+| `m2b/command/<command-name>/add` (NYI) | `<command-code>` | Adds a command code to the config |
+| `m2b/command/<command-name>/remove` (NYI) | - | Removes a command code from the config |
+| `m2b/device/<device-name>/discover` (NYI) | `<device-ip address>` | Attempts to discover a device and save its details to the config |
+| `m2b/device/<device-name>/add` (NYI) | `<device-type> <device-ip> <device-mac>` | Adds a device to the config from a known device string |
+| `m2b/device/<device-name>/remove` (NYI) | - | Removes the device from the config |
 
-and expects the payload to be a command name, when sending the command name
-must be the key of a value in the `[commands]` section of the `config.ini`.
-When learning the command name will be used to save the code as a command in
+`<command-name>` is the key of a value of an entry in the `[commands]` section of
+the `config.ini`. 
+
+`<device-name>` is the key of a value in the `[devices]` section of
 `config.ini`.
 
-`<device_name>` is the key of a value in the `[devices]` section of
-`config.ini`.
+`<device-ip address>` is the IP address of the RM3/4 device.
+
+`<device-type> <device-ip> <device-mac>` is the device string produced by `broadlink_discover` CLI.
 
 ### Learning commands
 
@@ -53,12 +62,61 @@ Learned commands are saved into the `config.ini` file.
 
 > mosquitto_pub -h 192.168.1.6 -t rm3/command/send -m command_1
 
+Device name (`rm3` in the example) and command name (`command_1` in the
+example) must be defined in the `config.ini` file.
 
 ## `config.ini`
 
+The config file has 3 sections, `mqtt`, `devices` and `commands`.
+
+The `mqtt` section can have upto 4 values:
+
+| Name | Default | Notes |
+| --- | --- | --- |
+| host | - | Required |
+| port | 1883 | Optional |
+| user | '' | Optional |
+| pass | '' | Optional |
+
+The `devices` section has 1 value for each device under control, the name of
+the device is the key and the `broadlink_discovery` output is the value.
+
+```ini
+[devices]
+rm3_1 = 0x5f36 192.168.1.11 aaaaaaaaaaaa
+rm3_2 = 0x5f36 192.168.1.12 aaaaaaaaaaab
+...
+rm3_n = 0x5f36 192.168.1.19 aaaaaaaaaaaf
+
+# General format is:
+<device-name> = <device-type> <device-ip> <device-mac>
+```
+
+The `commands` section lists each command that can be sent to any of the
+devices.
+
+```ini
+[commands]
+command_1 = 2600660072380e0e0e2a0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e2a0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e2a0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e2a0e2a0e2a0e2a0e2a0e2a0e0e0e0e0e2a0e2a0e2a0e2a0e2a0e2a0e0e0e2a0e00097b0d05
+
+# General format is:
+<command-name> = <command-code>
+```
+
+Command codes can be learned by the device, or built manually from available
+code libraries. 
+
+[Tasmota - Codes for IR Remotes](https://tasmota.github.io/docs/Codes-for-IR-Remotes/) \
+[Remote Central](http://www.remotecentral.com/index.html)
+
+[Yamaha IR Hex Converter](https://www.yamaha.com/ypab/irhex_converter.asp)
+
+This project may include some tools to do code conversions in the future.
+
 ## Docker image
 
-A docker image is available for amd64 and arm64 systems.
+A [docker image](https://hub.docker.com/repository/docker/d6jyahgwk/mqtt_to_broadlink)
+is available for amd64 and arm64 systems.
 
 ```bash
 docker run --rm -d \
