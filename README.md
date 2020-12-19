@@ -39,7 +39,9 @@ The program listens on the following topics:
 | `m2b/device/<device-name>/discover` | `<device-ip address>` | Attempts to discover a device and save its details to the config |
 | `m2b/device/<device-name>/add` | `<device-type> <device-ip> <device-mac>` | Adds a device to the config from a known device string |
 | `m2b/device/<device-name>/remove` | - | Removes the device from the config |
-| `m2b/command/<command-name>/add` | `<command-code>` | Adds a command code to the config |
+| `m2b/command/<command-name>/add` | `<command-code>` | Adds a broadlink code to the config |
+| `m2b/command/<command-name>/add_pronto` | `<command-code>` | Adds a pronto-hex code to the config |
+| `m2b/command/<command-name>/add_nec` | `<command-code>` | Adds a pronto-hex code to the config |
 | `m2b/command/<command-name>/remove` | - | Removes a command code from the config |
 
 `<command-name>` is the key of a value of an entry in the `[commands]` section of
