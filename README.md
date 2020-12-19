@@ -34,13 +34,13 @@ The program listens on the following topics:
 
 | Topic | Payload | Description |
 | --- | --- | --- |
-| `m2b/<device-name>/command/send` | `<command-name>` | Sends a command through the device |
-| `m2b/<device-name>/command/learn` | `<command-name>` | Learns a command through the device and saves the code to the config |
-| `m2b/command/<command-name>/add` (NYI) | `<command-code>` | Adds a command code to the config |
-| `m2b/command/<command-name>/remove` (NYI) | - | Removes a command code from the config |
-| `m2b/device/<device-name>/discover` (NYI) | `<device-ip address>` | Attempts to discover a device and save its details to the config |
-| `m2b/device/<device-name>/add` (NYI) | `<device-type> <device-ip> <device-mac>` | Adds a device to the config from a known device string |
-| `m2b/device/<device-name>/remove` (NYI) | - | Removes the device from the config |
+| `m2b/device/<device-name>/send` | `<command-name>` | Sends a command through the device |
+| `m2b/device/<device-name>/learn` | `<command-name>` | Learns a command through the device and saves the code to the config |
+| `m2b/device/<device-name>/discover` | `<device-ip address>` | Attempts to discover a device and save its details to the config |
+| `m2b/device/<device-name>/add` | `<device-type> <device-ip> <device-mac>` | Adds a device to the config from a known device string |
+| `m2b/device/<device-name>/remove` | - | Removes the device from the config |
+| `m2b/command/<command-name>/add` | `<command-code>` | Adds a command code to the config |
+| `m2b/command/<command-name>/remove` | - | Removes a command code from the config |
 
 `<command-name>` is the key of a value of an entry in the `[commands]` section of
 the `config.ini`. 
@@ -54,13 +54,13 @@ the `config.ini`.
 
 ### Learning commands
 
-> mosquitto_pub -h 192.168.1.6 -t rm3/command/learn -m command_2
+> mosquitto_pub -h 192.168.1.6 -t m2b/device/rm3/learn -m command_2
 
 Learned commands are saved into the `config.ini` file.
 
 ### Sending commands
 
-> mosquitto_pub -h 192.168.1.6 -t rm3/command/send -m command_1
+> mosquitto_pub -h 192.168.1.6 -t m2b/device/rm3/send -m command_1
 
 Device name (`rm3` in the example) and command name (`command_1` in the
 example) must be defined in the `config.ini` file.
@@ -69,7 +69,7 @@ example) must be defined in the `config.ini` file.
 
 The config file has 3 sections, `mqtt`, `devices` and `commands`.
 
-The `mqtt` section can have upto 4 values:
+The `mqtt` section can have upto 5 values:
 
 | Name | Default | Notes |
 | --- | --- | --- |
@@ -77,6 +77,7 @@ The `mqtt` section can have upto 4 values:
 | port | 1883 | Optional |
 | user | '' | Optional |
 | pass | '' | Optional |
+| prefix | `m2b` | Optional, this is added to the start of all topics used by this program |
 
 The `devices` section has 1 value for each device under control, the name of
 the device is the key and the `broadlink_discovery` output is the value.
@@ -124,4 +125,7 @@ docker run --rm -d \
   d6jyahgwk/mqtt_to_broadlink:latest
 ```
 
-This will use `config.ini` file from the directory where the command is run.
+This will use `config.ini` file from the directory where the command is run, to
+work fully the `config.ini` file will need to be writable by UID 65534
+(user `nobody` on many default linux installs) as the docker image runs as that
+user.
