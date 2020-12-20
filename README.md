@@ -81,6 +81,7 @@ The program listens on the following topics:
 | `m2b/command/<command-name>/add` | `<command-code>` | Adds a broadlink code to the config |
 | `m2b/command/<command-name>/add_pronto` | `<command-code>` | Adds a pronto-hex code to the config |
 | `m2b/command/<command-name>/remove` | - | Removes a command code from the config |
+| `m2b/log/level` | `DEBUG, INFO, WARN or ERROR` | Sets the level of messages shown in stdout |
 
 `<command-name>` is the key of a value of an entry in the `[commands]` section of
 the `config.ini`. 

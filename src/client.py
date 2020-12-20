@@ -1,3 +1,4 @@
+import logging
 import re
 import broadlink
 import paho.mqtt.client as mqtt
@@ -6,6 +7,7 @@ from src.config import Config
 from src.converter import Converter
 from src.device import Device
 
+log = logging.getLogger("mqtt_to_broadlink")
 
 class Client:
     mqtt: mqtt.Client
@@ -34,8 +36,8 @@ class Client:
         | `m2b/device/<device-name>/remove` | - | Removes the device from the config |
         | `m2b/command/<command-name>/add` | `<command-code>` | Adds a command code to the config |
         | `m2b/command/<command-name>/add_pronto` | `<command-code>` | Adds a pronto-hex code to the config |
-        | `m2b/command/<command-name>/add_nec` (NYI) | `<command-code>` | Adds a NEC IR code to the config |
         | `m2b/command/<command-name>/remove` | - | Removes a command code from the config |
+        | `m2b/log/level` | `[DEBUG|INFO|WARN|ERROR]` | Sets the level of messages shown in stdout |
         """
         self.message_map = {
             self.handle_device_send:        f'{self.mqtt_prefix}device/(.*)/send',
@@ -46,6 +48,7 @@ class Client:
             self.handle_command_add_pronto: f'{self.mqtt_prefix}command/(.*)/add_pronto',
             self.handle_command_add:        f'{self.mqtt_prefix}command/(.*)/add',
             self.handle_command_remove:     f'{self.mqtt_prefix}command/(.*)/remove',
+            self.handle_log_level:          f'{self.mqtt_prefix}log/level',
         }
 
     def device_get(self, device_name: str) -> Optional[Device]:
@@ -53,20 +56,20 @@ class Client:
         if device is None:
             details = self.config.device_details(device_name)
             if details is None:
-                print(f'Request for unknown device \'{device_name}\'')
+                log.warning(f'Request for unknown device \'{device_name}\'')
                 return
 
             (devtype, host, mac) = details
             try:
                 device = Device(device_name, devtype, host, mac)
                 self.devices[device_name] = device
-            except:
-                print(f'Could not open device \'{device_name}\'')
+            except Exception as e:
+                log.error(f'Could not open device \'{device_name}\': {e}')
         return device
 
     def device_add(self, device_name: str, device_details: str) -> Device:
         self.config.device_add(device_name, device_details)
-        print(f'Added device \'{device_name}\' with details \'{device_details}\'')
+        log.info(f'Added device \'{device_name}\' with details \'{device_details}\'')
         return self.device_get(device_name)
 
     def device_remove(self, device_name: str) -> None:
@@ -74,9 +77,9 @@ class Client:
         if device is not None:
             self.config.device_remove(device_name)
             del self.devices[device_name]
-            print(f'Removed device \'{device_name}\'')
+            log.info(f'Removed device \'{device_name}\'')
         else:
-            print(f'Can\'t remove unknown device \'{device_name}\'')
+            log.warning(f'Can\'t remove unknown device \'{device_name}\'')
 
     def connect(self) -> None:
         mqtt_details = self.config.mqtt_details()
@@ -99,6 +102,7 @@ class Client:
     def on_connect(self, client, _, flags, rc):
         client.subscribe(f'{self.mqtt_prefix}command/+/+')
         client.subscribe(f'{self.mqtt_prefix}device/+/+')
+        client.subscribe(f'{self.mqtt_prefix}log/level')
 
     # The callback for when a PUBLISH message is received from the server.
     def on_message(self, client, _, msg):
@@ -107,7 +111,7 @@ class Client:
             if re.match(value, msg.topic):
                 key(msg)
                 return
-        print(f'No handler for message topic \'{msg.topic}\'')
+        log.error(f'No handler for message topic \'{msg.topic}\'')
 
     """
     topic: m2b/device/<device-name>/send
@@ -117,7 +121,7 @@ class Client:
         command_name = str(msg.payload, 'UTF-8')
         hex_code = self.config.command_get(command_name)
         if hex_code is None:
-            print(f'Received request for unknown command \'{command_name}\'')
+            log.warning(f'Received request for unknown command \'{command_name}\'')
             return
         try:
             m = re.search(self.message_map[self.handle_device_send], msg.topic)
@@ -125,10 +129,11 @@ class Client:
             device = self.device_get(device_name)
             if device is not None:
                 device.send_code(hex_code)
+                log.debug(f'{device_name}: Send command \'{command_name}\'')
             else:
-                print(f'Could not open/connect to device \'{device_name}\'')
-        except:
-            print(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{command_name}\'')
+                log.error(f'Could not open/connect to device \'{device_name}\'')
+        except Exception as e:
+            log.error(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{command_name}\': {e}')
 
     """
     topic: m2b/device/<device-name>/learn
@@ -143,14 +148,14 @@ class Client:
             if device is not None:
                 hex_code = device.learn_code()
                 if hex_code is not None:
-                    print(f'{device_name}: Learned code \'{hex_code}\', saved as command \'{command_name}\'')
                     self.config.command_add(command_name, hex_code)
+                    log.debug(f'{device_name}: Learned code \'{hex_code}\', saved as command \'{command_name}\'')
                 else:
-                    print('No code received')
+                    log.warning('No code received')
             else:
-                print(f'Could not open/connect to device \'{device_name}\'')
-        except:
-            print(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{command_name}\'')
+                log.error(f'Could not open/connect to device \'{device_name}\'')
+        except Exception as e:
+            log.error(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{command_name}\': {e}')
 
     """
     topic: m2b/device/<device-name>/discover
@@ -163,17 +168,18 @@ class Client:
             m = re.search(self.message_map[self.handle_device_discover], msg.topic)
             device_name = m.group(1)
 
-            print(f'Attempting to discover device \'{device_name}\' at \'{ip_address}\'')
+            log.info(f'Attempting to discover device \'{device_name}\' at \'{ip_address}\'')
             devices = broadlink.discover(timeout=5, discover_ip_address=ip_address)
             for device in devices:
                 if device.auth():
                     device_mac = ''.join(format(x, '02x') for x in device.mac)
                     device_details = f'{hex(device.devtype)} {device.host[0]} {device_mac}'
                     self.device_add(device_name, device_details)
+                    log.debug(f'Discovered device \'{device_name}\' with details {device_details}')
                 else:
-                    print(f'Error while authenticating with device at \'{ip_address}\'')
-        except:
-            print(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{ip_address}\'')
+                    log.error(f'Error while authenticating with device at \'{ip_address}\'')
+        except Exception as e:
+            log.error(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{ip_address}\': {e}')
 
     """
     topic: m2b/device/<device-name>/add
@@ -186,8 +192,9 @@ class Client:
             m = re.search(self.message_map[self.handle_device_add], msg.topic)
             device_name = m.group(1)
             self.device_add(device_name, device_details)
-        except:
-            print(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{device_details}\'')
+            log.debug(f'Added device \'{device_name}\' with details {device_details}')
+        except Exception as e:
+            log.error(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{device_details}\': {e}')
 
     """
     topic: m2b/device/<device-name>/remove
@@ -198,41 +205,44 @@ class Client:
             m = re.search(self.message_map[self.handle_device_remove], msg.topic)
             device_name = m.group(1)
             self.device_remove(device_name)
-        except:
-            print(f'Error while processing MQTT message, topic=\'{msg.topic}\'')
+            log.debug(f'Removed device \'{device_name}\'')
+        except Exception as e:
+            log.error(f'Error while processing MQTT message, topic=\'{msg.topic}\': {e}')
 
     """
     topic: m2b/command/<command-name>/add
     payload: command-code
     """
     def handle_command_add(self, msg):
-        payload = "invalid"
+        broadlink_code = "invalid"
         try:
-            payload = str(msg.payload, 'UTF-8')
+            broadlink_code = str(msg.payload, 'UTF-8')
             m = re.search(self.message_map[self.handle_command_add], msg.topic)
             command_name = m.group(1)
 
-            if payload is not None and command_name is not None:
-                self.config.command_add(command_name, payload)
-        except:
-            print(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{payload}\'')
+            if broadlink_code is not None and command_name is not None:
+                self.config.command_add(command_name, broadlink_code)
+                log.debug(f'Added command \'{command_name}\' with code {broadlink_code}')
+        except Exception as e:
+            log.error(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{broadlink_code}\': {e}')
 
     """
     topic: m2b/command/<command-name>/add_pronto
     payload: command-code
     """
     def handle_command_add_pronto(self, msg):
-        payload = "invalid"
+        pronto_code = "invalid"
         try:
-            payload = str(msg.payload, 'UTF-8')
-            pronto_code = Converter.pronto_to_broadlink(payload)
-            m = re.search(self.message_map[self.handle_command_add_pronto], msg.topic)
-            command_name = m.group(1)
-
-            if payload is not None and command_name is not None:
-                self.config.command_add(command_name, pronto_code)
-        except:
-            print(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{payload}\'')
+            pronto_code = str(msg.payload, 'UTF-8')
+            if pronto_code is not None and len(pronto_code) > 0:
+                broadlink_code = Converter.pronto_to_broadlink(pronto_code)
+                m = re.search(self.message_map[self.handle_command_add_pronto], msg.topic)
+                command_name = m.group(1)
+                if command_name is not None:
+                    self.config.command_add(command_name, broadlink_code)
+                    log.debug(f'Added command \'{command_name}\' with broadlink code \'{broadlink_code}\', converted from pronto code \'{pronto_code}\'')
+        except Exception as e:
+            log.error(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{pronto_code}\': {e}')
 
     """
     topic: m2b/command/<command-name>/remove
@@ -245,5 +255,20 @@ class Client:
 
             if command_name is not None:
                 self.config.command_remove(command_name)
-        except:
-            print(f'Error while processing MQTT message, topic=\'{msg.topic}\'')
+                log.debug(f'Removed command \'{command_name}\'')
+        except Exception as e:
+            log.error(f'Error while processing MQTT message, topic=\'{msg.topic}\': {e}')
+
+    """
+    topic: m2b/log/level
+    payload: [ DEBUG | INFO | WARNING | ERROR | CRITICAL ]
+    """
+    def handle_log_level(self, msg):
+        try:
+            level = str(msg.payload, 'UTF-8')
+            log.setLevel(logging.getLevelName(level))
+            self.config.log_level_set(level)
+            log.info(f'Set log level to {level}')
+
+        except Exception as e:
+            log.error(f'Error while processing MQTT message, topic=\'{msg.topic}\': {e}')

@@ -9,6 +9,7 @@ RUN python3 -m pip install --prefix=/install -r requirements.txt
 FROM python:3-slim
 
 WORKDIR /service
+ENV PYTHONUNBUFFERED true
 COPY . .
 
 # Copy wheels/packages build in build image
