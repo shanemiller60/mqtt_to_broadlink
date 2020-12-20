@@ -11,4 +11,3 @@ docker run --rm -d \
   --name "mqtt_to_broadlink" \
   -v "${PROJECT_DIR}/data/:/service/data/" \
   ${IMAGE_NAME}:${IMAGE_TAG}
-
