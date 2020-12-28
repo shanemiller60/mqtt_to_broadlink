@@ -31,7 +31,7 @@ Docker method is the most well tested option.
 
 ### Docker image
 
-A [docker image](https://hub.docker.com/repository/docker/d6jyahgwk/mqtt_to_broadlink)
+A [docker image](https://hub.docker.com/r/d6jyahgwk/mqtt_to_broadlink)
 is available for amd64 and arm64 systems.
 
 ```bash
