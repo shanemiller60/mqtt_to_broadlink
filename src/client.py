@@ -1,5 +1,6 @@
 import logging
 import re
+import time
 import broadlink
 import paho.mqtt.client as mqtt
 from typing import Optional, Dict
@@ -20,6 +21,7 @@ class Client:
         self.config = config
         self.mqtt_prefix = self.config.mqtt_prefix()
         self.mqtt.on_connect = self.on_connect
+        self.mqtt.on_disconnect = self.on_disconnect
         self.mqtt.on_message = self.on_message
         self.devices = {}
 
@@ -81,31 +83,63 @@ class Client:
         else:
             log.warning(f'Can\'t remove unknown device \'{device_name}\'')
 
-    def connect(self) -> None:
+    def connect(self) -> bool:
+        """
+        Connects to the broker specified in the config.ini file
+
+        Returns True when the connection is successful
+        """
         mqtt_details = self.config.mqtt_details()
         if mqtt_details.get('user') is not None and mqtt_details.get('pass') is not None:
             self.mqtt.username_pw_set(mqtt_details['user'], mqtt_details['pass'])
-        self.mqtt.connect(mqtt_details['host'], int(mqtt_details.get('port') or "1883"), 60)
 
-    def loop_forever(self) -> None:
+        rc = -1;
+        try:
+            host = mqtt_details['host']
+            port = int(mqtt_details.get('port') or "1883")
+            rc = self.mqtt.connect(host, port, 15)
+        except Exception as ex:
+            log.error(f"Failed to connect to {host}:{port}, {ex}")
+            time.sleep(3.0)
+        return 0 == rc
+
+    def start_processing(self) -> None:
         """
+        Connects to the broker and processes messages forever.
 
-        Blocking call that processes network traffic, dispatches callbacks and
-        handles reconnecting.
-        Other loop*() functions are available that give a threaded interface and a
-        manual interface.
-
+        This call never returns.
         """
+        while True:
+            if self.connect():
+                break
+            time.sleep(3.0)
+
         self.mqtt.loop_forever()
 
-    # The callback for when the client receives a CONNACK response from the server.
     def on_connect(self, client, _, flags, rc):
+        """
+        The callback for when the client receives a CONNACK response from the server.
+
+        Subscribes to required topics
+        """
+        log.info('Connected to broker {client._host}:{client._port}')
         client.subscribe(f'{self.mqtt_prefix}command/+/+')
         client.subscribe(f'{self.mqtt_prefix}device/+/+')
         client.subscribe(f'{self.mqtt_prefix}log/level')
 
-    # The callback for when a PUBLISH message is received from the server.
+    def on_disconnect(self, client, userdata, rc):
+        """
+        Callback when disconnected from the server for any reason, loop_forever
+        should handle the reconnect logic
+        """
+        logging.info("Disconnected from broker, reason: {str(rc)}")
+
     def on_message(self, client, _, msg):
+        """
+        The callback for when a message is received from the server.
+
+        Passes the message to a registered handler based on a topic match/lookup
+        """
         for key in self.message_map:
             value = self.message_map[key]
             if re.match(value, msg.topic):
@@ -113,11 +147,11 @@ class Client:
                 return
         log.error(f'No handler for message topic \'{msg.topic}\'')
 
-    """
-    topic: m2b/device/<device-name>/send
-    payload: command-name
-    """
     def handle_device_send(self, msg):
+        """
+        topic: m2b/device/<device-name>/send
+        payload: command-name
+        """
         command_name = str(msg.payload, 'UTF-8')
         hex_code = self.config.command_get(command_name)
         if hex_code is None:
@@ -135,11 +169,11 @@ class Client:
         except Exception as e:
             log.error(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{command_name}\': {e}')
 
-    """
-    topic: m2b/device/<device-name>/learn
-    payload: -
-    """
     def handle_device_learn(self, msg):
+        """
+        topic: m2b/device/<device-name>/learn
+        payload: -
+        """
         command_name = str(msg.payload, 'UTF-8')
         try:
             m = re.search(self.message_map[self.handle_device_learn], msg.topic)
@@ -157,11 +191,11 @@ class Client:
         except Exception as e:
             log.error(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{command_name}\': {e}')
 
-    """
-    topic: m2b/device/<device-name>/discover
-    payload: device-ip address
-    """
     def handle_device_discover(self, msg):
+        """
+        topic: m2b/device/<device-name>/discover
+        payload: device-ip address
+        """
         ip_address = "invalid"
         try:
             ip_address = str(msg.payload, 'UTF-8')
@@ -181,11 +215,11 @@ class Client:
         except Exception as e:
             log.error(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{ip_address}\': {e}')
 
-    """
-    topic: m2b/device/<device-name>/add
-    payload: device-type device-ip device-mac
-    """
     def handle_device_add(self, msg):
+        """
+        topic: m2b/device/<device-name>/add
+        payload: device-type device-ip device-mac
+        """
         device_details = "invalid"
         try:
             device_details = str(msg.payload, 'UTF-8')
@@ -196,11 +230,11 @@ class Client:
         except Exception as e:
             log.error(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{device_details}\': {e}')
 
-    """
-    topic: m2b/device/<device-name>/remove
-    payload: -
-    """
     def handle_device_remove(self, msg):
+        """
+        topic: m2b/device/<device-name>/remove
+        payload: -
+        """
         try:
             m = re.search(self.message_map[self.handle_device_remove], msg.topic)
             device_name = m.group(1)
@@ -209,11 +243,11 @@ class Client:
         except Exception as e:
             log.error(f'Error while processing MQTT message, topic=\'{msg.topic}\': {e}')
 
-    """
-    topic: m2b/command/<command-name>/add
-    payload: command-code
-    """
     def handle_command_add(self, msg):
+        """
+        topic: m2b/command/<command-name>/add
+        payload: command-code
+        """
         broadlink_code = "invalid"
         try:
             broadlink_code = str(msg.payload, 'UTF-8')
@@ -226,11 +260,11 @@ class Client:
         except Exception as e:
             log.error(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{broadlink_code}\': {e}')
 
-    """
-    topic: m2b/command/<command-name>/add_pronto
-    payload: command-code
-    """
     def handle_command_add_pronto(self, msg):
+        """
+        topic: m2b/command/<command-name>/add_pronto
+        payload: command-code
+        """
         pronto_code = "invalid"
         try:
             pronto_code = str(msg.payload, 'UTF-8')
@@ -244,11 +278,11 @@ class Client:
         except Exception as e:
             log.error(f'Error while processing MQTT message, topic=\'{msg.topic}\' payload=\'{pronto_code}\': {e}')
 
-    """
-    topic: m2b/command/<command-name>/remove
-    payload: -
-    """
     def handle_command_remove(self, msg):
+        """
+        topic: m2b/command/<command-name>/remove
+        payload: -
+        """
         try:
             m = re.search(self.message_map[self.handle_command_remove], msg.topic)
             command_name = m.group(1)
@@ -259,11 +293,11 @@ class Client:
         except Exception as e:
             log.error(f'Error while processing MQTT message, topic=\'{msg.topic}\': {e}')
 
-    """
-    topic: m2b/log/level
-    payload: [ DEBUG | INFO | WARNING | ERROR | CRITICAL ]
-    """
     def handle_log_level(self, msg):
+        """
+        topic: m2b/log/level
+        payload: [ DEBUG | INFO | WARNING | ERROR | CRITICAL ]
+        """
         try:
             level = str(msg.payload, 'UTF-8')
             log.setLevel(logging.getLevelName(level))

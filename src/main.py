@@ -7,8 +7,7 @@ def main():
     config = Config("./data/config.ini")
     logging.basicConfig(level=config.log_level_get(), format='%(asctime)s %(message)s')
     client = Client(config)
-    client.connect()
-    client.loop_forever()
+    client.start_processing()
 
 
 if __name__ == "__main__":
