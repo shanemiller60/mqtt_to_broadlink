@@ -93,7 +93,7 @@ class Client:
         if mqtt_details.get('user') is not None and mqtt_details.get('pass') is not None:
             self.mqtt.username_pw_set(mqtt_details['user'], mqtt_details['pass'])
 
-        rc = -1;
+        rc = -1
         try:
             host = mqtt_details['host']
             port = int(mqtt_details.get('port') or "1883")
@@ -122,7 +122,7 @@ class Client:
 
         Subscribes to required topics
         """
-        log.info('Connected to broker {client._host}:{client._port}')
+        log.info(f'Connected to broker {client._host}:{client._port}')
         client.subscribe(f'{self.mqtt_prefix}command/+/+')
         client.subscribe(f'{self.mqtt_prefix}device/+/+')
         client.subscribe(f'{self.mqtt_prefix}log/level')

@@ -114,7 +114,7 @@ can learn a code from a remote. Learned commands are saved into the
 
 > mosquitto_pub -h 192.168.1.6 -t m2b/device/rm3/send -m command_2
 
-Device name (`rm3` in the example) and command name (`command_1` in the
+Device name (`rm3` in the example) and command name (`command_2` in the
 example) must be defined in the `config.ini` file.
 
 ## `config.ini` and command codes
