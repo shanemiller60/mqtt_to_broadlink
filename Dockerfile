@@ -1,4 +1,4 @@
-FROM python:3 AS build
+FROM python:3.10 AS build
 
 COPY . .
 # The install needs a full python image with gcc, crypto libs/headers etc
@@ -6,7 +6,7 @@ COPY . .
 RUN python3 -m pip install --prefix=/install -r requirements.txt
 
 # Start the final output image
-FROM python:3-slim
+FROM python:3.10-slim
 
 WORKDIR /service
 ENV PYTHONUNBUFFERED true
